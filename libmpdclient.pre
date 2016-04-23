@@ -1,0 +1,521 @@
+// c2nim --cdecl --dynlib:mpdll test.pre
+
+#ifdef C2NIM
+#  dynlib mpdll
+#  cdecl
+#  if defined(windows)
+#    define mpdll "mpdclient.dll"
+#  elif defined(macosx)
+#    define mpdll "libmpdclient.dylib"
+#  else
+#    define mpdll "libmpdclient.so"
+#  endif
+#endif
+
+#include <time.h>
+
+enum {
+ MPD_SAMPLE_FORMAT_FLOAT = 0xe0,
+ MPD_SAMPLE_FORMAT_DSD = 0xe1,
+};
+
+struct mpd_song;
+struct mpd_connection;
+struct mpd_playlist;
+struct mpd_settings;
+struct mpd_stats;
+struct mpd_entity;
+struct mpd_status;
+
+
+struct mpd_audio_format {
+ uint32 sample_rate;
+ uint8 bits;
+ uint8 channels;
+ uint16 reserved0;
+ uint32 reserved1;
+};
+
+enum mpd_state {
+ MPD_STATE_UNKNOWN = 0,
+ MPD_STATE_STOP = 1,
+ MPD_STATE_PLAY = 2,
+ MPD_STATE_PAUSE = 3,
+};
+
+enum mpd_operator {
+ MPD_OPERATOR_DEFAULT,
+};
+
+enum mpd_entity_type {
+ MPD_ENTITY_TYPE_UNKNOWN,
+ MPD_ENTITY_TYPE_DIRECTORY,
+ MPD_ENTITY_TYPE_SONG,
+ MPD_ENTITY_TYPE_PLAYLIST,
+};
+
+enum mpd_server_error {
+ MPD_SERVER_ERROR_UNK = -1,
+ MPD_SERVER_ERROR_NOT_LIST = 1,
+ MPD_SERVER_ERROR_ARG = 2,
+ MPD_SERVER_ERROR_PASSWORD = 3,
+ MPD_SERVER_ERROR_PERMISSION = 4,
+ MPD_SERVER_ERROR_UNKNOWN_CMD = 5,
+ MPD_SERVER_ERROR_NO_EXIST = 50,
+ MPD_SERVER_ERROR_PLAYLIST_MAX = 51,
+ MPD_SERVER_ERROR_SYSTEM = 52,
+ MPD_SERVER_ERROR_PLAYLIST_LOAD = 53,
+ MPD_SERVER_ERROR_UPDATE_ALREADY = 54,
+ MPD_SERVER_ERROR_PLAYER_SYNC = 55,
+ MPD_SERVER_ERROR_EXIST = 56,
+};
+
+enum mpd_error {
+ MPD_ERROR_SUCCESS = 0,
+ MPD_ERROR_OOM,
+ MPD_ERROR_ARGUMENT,
+ MPD_ERROR_STATE,
+ MPD_ERROR_TIMEOUT,
+ MPD_ERROR_SYSTEM,
+ MPD_ERROR_RESOLVER,
+ MPD_ERROR_MALFORMED,
+ MPD_ERROR_CLOSED,
+ MPD_ERROR_SERVER,
+};
+
+enum mpd_tag_type
+{
+ MPD_TAG_UNKNOWN = -1,
+ MPD_TAG_ARTIST,
+ MPD_TAG_ALBUM,
+ MPD_TAG_ALBUM_ARTIST,
+ MPD_TAG_TITLE,
+ MPD_TAG_TRACK,
+ MPD_TAG_NAME,
+ MPD_TAG_GENRE,
+ MPD_TAG_DATE,
+ MPD_TAG_COMPOSER,
+ MPD_TAG_PERFORMER,
+ MPD_TAG_COMMENT,
+ MPD_TAG_DISC,
+ MPD_TAG_MUSICBRAINZ_ARTISTID,
+ MPD_TAG_MUSICBRAINZ_ALBUMID,
+ MPD_TAG_MUSICBRAINZ_ALBUMARTISTID,
+ MPD_TAG_MUSICBRAINZ_TRACKID,
+ MPD_TAG_MUSICBRAINZ_RELEASETRACKID,
+ MPD_TAG_COUNT
+};
+
+enum mpd_idle {
+ MPD_IDLE_DATABASE = 0x1,
+ MPD_IDLE_STORED_PLAYLIST = 0x2,
+ MPD_IDLE_QUEUE = 0x4,
+ MPD_IDLE_PLAYLIST = MPD_IDLE_QUEUE,
+ MPD_IDLE_PLAYER = 0x8,
+ MPD_IDLE_MIXER = 0x10,
+ MPD_IDLE_OUTPUT = 0x20,
+ MPD_IDLE_OPTIONS = 0x40,
+ MPD_IDLE_UPDATE = 0x80,
+ MPD_IDLE_STICKER = 0x100,
+ MPD_IDLE_SUBSCRIPTION = 0x200,
+ MPD_IDLE_MESSAGE = 0x400,
+};
+
+struct mpd_pair {
+ const char *name;
+ const char *value;
+};
+
+struct mpd_pair *mpd_recv_pair(struct mpd_connection *connection);
+struct mpd_pair *mpd_recv_pair_named(struct mpd_connection *connection, const char *name);
+void mpd_return_pair(struct mpd_connection *connection, struct mpd_pair *pair);
+void mpd_enqueue_pair(struct mpd_connection *connection, struct mpd_pair *pair);
+bool mpd_send_allowed_commands(struct mpd_connection *connection);
+bool mpd_send_disallowed_commands(struct mpd_connection *connection);
+static inline struct mpd_pair *mpd_recv_command_pair(struct mpd_connection *connection)
+{
+ return mpd_recv_pair_named(connection, "command");
+}
+bool mpd_send_list_url_schemes(struct mpd_connection *connection);
+static inline struct mpd_pair *mpd_recv_url_scheme_pair(struct mpd_connection *connection)
+{
+ return mpd_recv_pair_named(connection, "handler");
+}
+bool mpd_send_list_tag_types(struct mpd_connection *connection);
+static inline struct mpd_pair *mpd_recv_tag_type_pair(struct mpd_connection *connection)
+{
+ return mpd_recv_pair_named(connection, "tagtype");
+}
+
+struct mpd_async;
+struct mpd_connection *mpd_connection_new(const char *host, unsigned port, unsigned timeout_ms);
+struct mpd_connection *mpd_connection_new_async(struct mpd_async *async, const char *welcome);
+void mpd_connection_free(struct mpd_connection *connection);
+const struct mpd_settings *mpd_connection_get_settings(const struct mpd_connection *connection);
+void mpd_connection_set_keepalive(struct mpd_connection *connection,
+                                  bool keepalive);
+void mpd_connection_set_timeout(struct mpd_connection *connection,
+    unsigned timeout_ms);
+int mpd_connection_get_fd(const struct mpd_connection *connection);
+struct mpd_async *mpd_connection_get_async(struct mpd_connection *connection);
+enum mpd_error mpd_connection_get_error(const struct mpd_connection *connection);
+const char *mpd_connection_get_error_message(const struct mpd_connection *connection);
+enum mpd_server_error mpd_connection_get_server_error(const struct mpd_connection *connection);
+unsigned mpd_connection_get_server_error_location(const struct mpd_connection *connection);
+int mpd_connection_get_system_error(const struct mpd_connection *connection);
+bool mpd_connection_clear_error(struct mpd_connection *connection);
+const unsigned *mpd_connection_get_server_version(const struct mpd_connection *connection);
+int mpd_connection_cmp_server_version(const struct mpd_connection *connection,
+      unsigned major, unsigned minor,
+      unsigned patch);
+bool mpd_send_list_all(struct mpd_connection *connection, const char *path);
+bool mpd_send_list_all_meta(struct mpd_connection *connection, const char *path);
+bool mpd_send_list_meta(struct mpd_connection *connection, const char *path);
+bool mpd_send_read_comments(struct mpd_connection *connection, const char *path);
+bool mpd_send_update(struct mpd_connection *connection, const char *path);
+bool mpd_send_rescan(struct mpd_connection *connection, const char *path);
+unsigned mpd_recv_update_id(struct mpd_connection *connection);
+unsigned mpd_run_update(struct mpd_connection *connection, const char *path);
+unsigned mpd_run_rescan(struct mpd_connection *connection, const char *path);
+struct mpd_directory;
+struct mpd_directory *mpd_directory_dup(const struct mpd_directory *directory);
+void mpd_directory_free(struct mpd_directory *directory);
+const char *mpd_directory_get_path(const struct mpd_directory *directory);
+Time mpd_directory_get_last_modified(const struct mpd_directory *directory);
+struct mpd_directory *mpd_directory_begin(const struct mpd_pair *pair);
+bool mpd_directory_feed(struct mpd_directory *directory,
+     const struct mpd_pair *pair);
+struct mpd_directory *mpd_recv_directory(struct mpd_connection *connection);
+
+const char *mpd_tag_name(enum mpd_tag_type type);
+enum mpd_tag_type mpd_tag_name_parse(const char *name);
+enum mpd_tag_type mpd_tag_name_iparse(const char *name);
+
+void mpd_song_free(struct mpd_song *song);
+struct mpd_song *mpd_song_dup(const struct mpd_song *song);
+const char *mpd_song_get_uri(const struct mpd_song *song);
+const char *mpd_song_get_tag(const struct mpd_song *song,
+   enum mpd_tag_type type, unsigned idx);
+unsigned mpd_song_get_duration(const struct mpd_song *song);
+unsigned mpd_song_get_duration_ms(const struct mpd_song *song);
+unsigned mpd_song_get_start(const struct mpd_song *song);
+unsigned mpd_song_get_end(const struct mpd_song *song);
+Time
+mpd_song_get_last_modified(const struct mpd_song *song);
+void mpd_song_set_pos(struct mpd_song *song, unsigned pos);
+unsigned mpd_song_get_pos(const struct mpd_song *song);
+unsigned mpd_song_get_id(const struct mpd_song *song);
+unsigned mpd_song_get_prio(const struct mpd_song *song);
+struct mpd_song *mpd_song_begin(const struct mpd_pair *pair);
+bool mpd_song_feed(struct mpd_song *song, const struct mpd_pair *pair);
+struct mpd_song *mpd_recv_song(struct mpd_connection *connection);
+
+void mpd_entity_free(struct mpd_entity *entity);
+enum mpd_entity_type mpd_entity_get_type(const struct mpd_entity *entity);
+const struct mpd_directory *mpd_entity_get_directory(const struct mpd_entity *entity);
+const struct mpd_song *mpd_entity_get_song(const struct mpd_entity *entity);
+const struct mpd_playlist *mpd_entity_get_playlist(const struct mpd_entity *entity);
+struct mpd_entity *mpd_entity_begin(const struct mpd_pair *pair);
+bool mpd_entity_feed(struct mpd_entity *entity, const struct mpd_pair *pair);
+struct mpd_entity *mpd_recv_entity(struct mpd_connection *connection);
+
+const char *mpd_idle_name(enum mpd_idle idle);
+enum mpd_idle
+mpd_idle_name_parse(const char *name);
+bool mpd_send_idle(struct mpd_connection *connection);
+bool mpd_send_idle_mask(struct mpd_connection *connection, enum mpd_idle mask);
+bool mpd_send_noidle(struct mpd_connection *connection);
+enum mpd_idle
+mpd_idle_parse_pair(const struct mpd_pair *pair);
+enum mpd_idle
+mpd_recv_idle(struct mpd_connection *connection, bool disable_timeout);
+enum mpd_idle
+mpd_run_idle(struct mpd_connection *connection);
+enum mpd_idle
+mpd_run_idle_mask(struct mpd_connection *connection, enum mpd_idle mask);
+enum mpd_idle
+mpd_run_noidle(struct mpd_connection *connection);
+bool mpd_command_list_begin(struct mpd_connection *connection, bool discrete_ok);
+bool mpd_command_list_end(struct mpd_connection *connection);
+struct mpd_message;
+struct mpd_message *mpd_message_begin(const struct mpd_pair *pair);
+bool mpd_message_feed(struct mpd_message *output, const struct mpd_pair *pair);
+void mpd_message_free(struct mpd_message *message);
+const char *mpd_message_get_channel(const struct mpd_message *message);
+const char *mpd_message_get_text(const struct mpd_message *message);
+bool mpd_send_subscribe(struct mpd_connection *connection, const char *channel);
+bool mpd_run_subscribe(struct mpd_connection *connection, const char *channel);
+bool mpd_send_unsubscribe(struct mpd_connection *connection, const char *channel);
+bool mpd_run_unsubscribe(struct mpd_connection *connection, const char *channel);
+bool mpd_send_send_message(struct mpd_connection *connection,
+        const char *channel, const char *text);
+bool mpd_run_send_message(struct mpd_connection *connection,
+       const char *channel, const char *text);
+bool mpd_send_read_messages(struct mpd_connection *connection);
+struct mpd_message *mpd_recv_message(struct mpd_connection *connection);
+bool mpd_send_channels(struct mpd_connection *connection);
+static inline struct mpd_pair *mpd_recv_channel_pair(struct mpd_connection *connection)
+{
+ return mpd_recv_pair_named(connection, "channel");
+}
+bool mpd_send_set_volume(struct mpd_connection *connection, unsigned volume);
+bool mpd_run_set_volume(struct mpd_connection *connection, unsigned volume);
+bool mpd_send_change_volume(struct mpd_connection *connection, int relative_volume);
+bool mpd_run_change_volume(struct mpd_connection *connection, int relative_volume);
+struct mpd_output;
+struct mpd_output *mpd_output_begin(const struct mpd_pair *pair);
+bool mpd_output_feed(struct mpd_output *output, const struct mpd_pair *pair);
+void mpd_output_free(struct mpd_output *output);
+unsigned mpd_output_get_id(const struct mpd_output *output);
+const char *mpd_output_get_name(const struct mpd_output *output);
+bool mpd_output_get_enabled(const struct mpd_output *output);
+bool mpd_send_outputs(struct mpd_connection *connection);
+struct mpd_output *mpd_recv_output(struct mpd_connection *connection);
+bool mpd_send_enable_output(struct mpd_connection *connection, unsigned output_id);
+bool mpd_run_enable_output(struct mpd_connection *connection, unsigned output_id);
+bool mpd_send_disable_output(struct mpd_connection *connection, unsigned output_id);
+bool mpd_run_disable_output(struct mpd_connection *connection, unsigned output_id);
+bool mpd_send_toggle_output(struct mpd_connection *connection, unsigned output_id);
+bool mpd_run_toggle_output(struct mpd_connection *connection, unsigned output_id);
+
+bool mpd_send_password(struct mpd_connection *connection, const char *password);
+bool mpd_run_password(struct mpd_connection *connection, const char *password);
+
+bool mpd_send_current_song(struct mpd_connection *connection);
+struct mpd_song *mpd_run_current_song(struct mpd_connection *connection);
+bool mpd_send_play(struct mpd_connection *connection);
+bool mpd_run_play(struct mpd_connection *connection);
+bool mpd_send_play_pos(struct mpd_connection *connection, unsigned song_pos);
+bool mpd_run_play_pos(struct mpd_connection *connection, unsigned song_pos);
+bool mpd_send_play_id(struct mpd_connection *connection, unsigned id);
+bool mpd_run_play_id(struct mpd_connection *connection, unsigned song_id);
+bool mpd_send_stop(struct mpd_connection *connection);
+bool mpd_run_stop(struct mpd_connection *connection);
+bool mpd_send_toggle_pause(struct mpd_connection *connection);
+bool mpd_run_toggle_pause(struct mpd_connection *connection);
+bool mpd_send_pause(struct mpd_connection *connection, bool mode);
+bool mpd_run_pause(struct mpd_connection *connection, bool mode);
+bool mpd_send_next(struct mpd_connection *connection);
+bool mpd_run_next(struct mpd_connection *connection);
+bool mpd_send_previous(struct mpd_connection *connection);
+bool mpd_run_previous(struct mpd_connection *connection);
+bool mpd_send_seek_pos(struct mpd_connection *connection,
+    unsigned song_pos, unsigned t);
+bool mpd_run_seek_pos(struct mpd_connection *connection,
+   unsigned song_pos, unsigned t);
+bool mpd_send_seek_id(struct mpd_connection *connection, unsigned id, unsigned t);
+bool mpd_run_seek_id(struct mpd_connection *connection,
+  unsigned song_id, unsigned t);
+bool mpd_send_repeat(struct mpd_connection *connection, bool mode);
+bool mpd_run_repeat(struct mpd_connection *connection, bool mode);
+bool mpd_send_random(struct mpd_connection *connection, bool mode);
+bool mpd_run_random(struct mpd_connection *connection, bool mode);
+bool mpd_send_single(struct mpd_connection *connection, bool mode);
+bool mpd_run_single(struct mpd_connection *connection, bool mode);
+bool mpd_send_consume(struct mpd_connection *connection, bool mode);
+bool mpd_run_consume(struct mpd_connection *connection, bool mode);
+bool mpd_send_crossfade(struct mpd_connection *connection, unsigned seconds);
+bool mpd_run_crossfade(struct mpd_connection *connection, unsigned seconds);
+bool mpd_send_mixrampdb(struct mpd_connection *connection, float db);
+bool mpd_run_mixrampdb(struct mpd_connection *connection, float db);
+bool mpd_send_mixrampdelay(struct mpd_connection *connection, float seconds);
+bool mpd_run_mixrampdelay(struct mpd_connection *connection, float seconds);
+bool mpd_send_clearerror(struct mpd_connection *connection);
+bool mpd_run_clearerror(struct mpd_connection *connection);
+
+void mpd_playlist_free(struct mpd_playlist *playlist);
+struct mpd_playlist *mpd_playlist_dup(const struct mpd_playlist *playlist);
+const char *mpd_playlist_get_path(const struct mpd_playlist *playlist);
+Time
+mpd_playlist_get_last_modified(const struct mpd_playlist *playlist);
+struct mpd_playlist *mpd_playlist_begin(const struct mpd_pair *pair);
+bool mpd_playlist_feed(struct mpd_playlist *playlist, const struct mpd_pair *pair);
+bool mpd_send_list_playlists(struct mpd_connection *connection);
+struct mpd_playlist *mpd_recv_playlist(struct mpd_connection *connection);
+bool mpd_send_list_playlist(struct mpd_connection *connection, const char *name);
+bool mpd_send_list_playlist_meta(struct mpd_connection *connection, const char *name);
+bool mpd_send_playlist_clear(struct mpd_connection *connection, const char *name);
+bool mpd_run_playlist_clear(struct mpd_connection *connection, const char *name);
+bool mpd_send_playlist_add(struct mpd_connection *connection, const char *name,
+        const char *path);
+bool mpd_run_playlist_add(struct mpd_connection *connection,
+       const char *name, const char *path);
+bool mpd_send_playlist_move(struct mpd_connection *connection, const char *name,
+         unsigned from, unsigned to);
+bool mpd_send_playlist_delete(struct mpd_connection *connection, const char *name,
+    unsigned pos);
+bool mpd_run_playlist_delete(struct mpd_connection *connection,
+   const char *name, unsigned pos);
+bool mpd_send_save(struct mpd_connection *connection, const char *name);
+bool mpd_run_save(struct mpd_connection *connection, const char *name);
+bool mpd_send_load(struct mpd_connection *connection, const char *name);
+bool mpd_run_load(struct mpd_connection *connection, const char *name);
+bool mpd_send_rename(struct mpd_connection *connection,
+  const char *from, const char *to);
+bool mpd_run_rename(struct mpd_connection *connection,
+        const char *from, const char *to);
+bool mpd_send_rm(struct mpd_connection *connection, const char *name);
+bool mpd_run_rm(struct mpd_connection *connection, const char *name);
+bool mpd_send_list_queue_meta(struct mpd_connection *connection);
+bool mpd_send_list_queue_range_meta(struct mpd_connection *connection,
+          unsigned start, unsigned end);
+bool mpd_send_get_queue_song_pos(struct mpd_connection *connection, unsigned pos);
+struct mpd_song *mpd_run_get_queue_song_pos(struct mpd_connection *connection, unsigned pos);
+bool mpd_send_get_queue_song_id(struct mpd_connection *connection, unsigned id);
+struct mpd_song *mpd_run_get_queue_song_id(struct mpd_connection *connection, unsigned id);
+bool mpd_send_queue_changes_meta(struct mpd_connection *connection,
+       unsigned version);
+bool mpd_send_queue_changes_brief(struct mpd_connection *connection,
+        unsigned version);
+bool mpd_recv_queue_change_brief(struct mpd_connection *connection,
+       unsigned *position_r, unsigned *id_r);
+bool mpd_send_add(struct mpd_connection *connection, const char *file);
+bool mpd_run_add(struct mpd_connection *connection, const char *uri);
+bool mpd_send_add_id(struct mpd_connection *connection, const char *file);
+bool mpd_send_add_id_to(struct mpd_connection *connection, const char *uri,
+     unsigned to);
+int mpd_recv_song_id(struct mpd_connection *connection);
+int mpd_run_add_id(struct mpd_connection *connection, const char *file);
+int mpd_run_add_id_to(struct mpd_connection *connection, const char *uri,
+    unsigned to);
+bool mpd_send_delete(struct mpd_connection *connection, unsigned pos);
+bool mpd_run_delete(struct mpd_connection *connection, unsigned pos);
+bool mpd_send_delete_range(struct mpd_connection *connection,
+        unsigned start, unsigned end);
+bool mpd_run_delete_range(struct mpd_connection *connection,
+        unsigned start, unsigned end);
+bool mpd_send_delete_id(struct mpd_connection *connection, unsigned id);
+bool mpd_run_delete_id(struct mpd_connection *connection, unsigned id);
+bool mpd_send_shuffle(struct mpd_connection *connection);
+bool mpd_run_shuffle(struct mpd_connection *connection);
+bool mpd_send_shuffle_range(struct mpd_connection *connection, unsigned start, unsigned end);
+bool mpd_run_shuffle_range(struct mpd_connection *connection,
+        unsigned start, unsigned end);
+bool mpd_send_clear(struct mpd_connection *connection);
+bool mpd_run_clear(struct mpd_connection *connection);
+bool mpd_send_move(struct mpd_connection *connection, unsigned from, unsigned to);
+bool mpd_run_move(struct mpd_connection *connection, unsigned from, unsigned to);
+bool mpd_send_move_id(struct mpd_connection *connection, unsigned from, unsigned to);
+bool mpd_run_move_id(struct mpd_connection *connection, unsigned from, unsigned to);
+bool mpd_send_move_range(struct mpd_connection *connection,
+      unsigned start, unsigned end, unsigned to);
+bool mpd_run_move_range(struct mpd_connection *connection,
+      unsigned start, unsigned end, unsigned to);
+bool mpd_send_swap(struct mpd_connection *connection, unsigned pos1, unsigned pos2);
+bool mpd_run_swap(struct mpd_connection *connection, unsigned pos1, unsigned pos2);
+bool mpd_send_swap_id(struct mpd_connection *connection, unsigned id1, unsigned id2);
+bool mpd_run_swap_id(struct mpd_connection *connection, unsigned id1, unsigned id2);
+bool mpd_send_prio(struct mpd_connection *connection, int priority,
+       unsigned position);
+bool mpd_run_prio(struct mpd_connection *connection, int priority,
+      unsigned position);
+bool mpd_send_prio_range(struct mpd_connection *connection, int priority,
+      unsigned start, unsigned end);
+bool mpd_run_prio_range(struct mpd_connection *connection, int priority,
+     unsigned start, unsigned end);
+bool mpd_send_prio_id(struct mpd_connection *connection, int priority,
+   unsigned id);
+bool mpd_run_prio_id(struct mpd_connection *connection, int priority,
+  unsigned id);
+bool mpd_response_finish(struct mpd_connection *connection);
+bool mpd_response_next(struct mpd_connection *connection);
+
+bool mpd_search_db_songs(struct mpd_connection *connection, bool exact);
+bool mpd_search_add_db_songs(struct mpd_connection *connection, bool exact);
+bool mpd_search_queue_songs(struct mpd_connection *connection, bool exact);
+bool mpd_search_db_tags(struct mpd_connection *connection, enum mpd_tag_type type);
+bool mpd_count_db_songs(struct mpd_connection *connection);
+bool mpd_search_add_base_constraint(struct mpd_connection *connection,
+          enum mpd_operator oper,
+          const char *value);
+bool mpd_search_add_uri_constraint(struct mpd_connection *connection,
+         enum mpd_operator oper,
+         const char *value);
+bool mpd_search_add_tag_constraint(struct mpd_connection *connection,
+         enum mpd_operator oper,
+         enum mpd_tag_type type,
+         const char *value);
+bool mpd_search_add_any_tag_constraint(struct mpd_connection *connection,
+      enum mpd_operator oper,
+      const char *value);
+bool mpd_search_add_modified_since_constraint(struct mpd_connection *connection,
+      enum mpd_operator oper,
+      Time value);
+bool mpd_search_add_window(struct mpd_connection *connection,
+        unsigned start, unsigned end);
+bool mpd_search_commit(struct mpd_connection *connection);
+void mpd_search_cancel(struct mpd_connection *connection);
+struct mpd_pair *mpd_recv_pair_tag(struct mpd_connection *connection, enum mpd_tag_type type);
+bool mpd_send_command(struct mpd_connection *connection, const char *command, ...);
+
+struct mpd_settings *mpd_settings_new(const char *host, unsigned port, unsigned timeout_ms,
+   const char *reserved, const char *password);
+void mpd_settings_free(struct mpd_settings *settings);
+const char *mpd_settings_get_host(const struct mpd_settings *settings);
+unsigned mpd_settings_get_port(const struct mpd_settings *settings);
+unsigned mpd_settings_get_timeout_ms(const struct mpd_settings *settings);
+const char *mpd_settings_get_password(const struct mpd_settings *settings);
+
+bool mpd_send_stats(struct mpd_connection *connection);
+struct mpd_stats *mpd_stats_begin(void);
+void mpd_stats_feed(struct mpd_stats *status, const struct mpd_pair *pair);
+struct mpd_stats *mpd_recv_stats(struct mpd_connection *connection);
+struct mpd_stats *mpd_run_stats(struct mpd_connection *connection);
+void mpd_stats_free(struct mpd_stats * stats);
+unsigned mpd_stats_get_number_of_artists(const struct mpd_stats * stats);
+unsigned mpd_stats_get_number_of_albums(const struct mpd_stats * stats);
+unsigned mpd_stats_get_number_of_songs(const struct mpd_stats * stats);
+unsigned long mpd_stats_get_uptime(const struct mpd_stats * stats);
+unsigned long mpd_stats_get_db_update_time(const struct mpd_stats * stats);
+unsigned long mpd_stats_get_play_time(const struct mpd_stats * stats);
+unsigned long mpd_stats_get_db_play_time(const struct mpd_stats * stats);
+
+struct mpd_status *mpd_status_begin(void);
+void mpd_status_feed(struct mpd_status *status, const struct mpd_pair *pair);
+bool mpd_send_status(struct mpd_connection *connection);
+struct mpd_status *mpd_recv_status(struct mpd_connection *connection);
+struct mpd_status *mpd_run_status(struct mpd_connection *connection);
+void mpd_status_free(struct mpd_status * status);
+int mpd_status_get_volume(const struct mpd_status *status);
+bool mpd_status_get_repeat(const struct mpd_status *status);
+bool mpd_status_get_random(const struct mpd_status *status);
+bool mpd_status_get_single(const struct mpd_status *status);
+bool mpd_status_get_consume(const struct mpd_status *status);
+unsigned mpd_status_get_queue_length(const struct mpd_status *status);
+unsigned mpd_status_get_queue_version(const struct mpd_status *status);
+enum mpd_state
+mpd_status_get_state(const struct mpd_status *status);
+unsigned mpd_status_get_crossfade(const struct mpd_status *status);
+float
+mpd_status_get_mixrampdb(const struct mpd_status *status);
+float
+mpd_status_get_mixrampdelay(const struct mpd_status *status);
+int mpd_status_get_song_pos(const struct mpd_status *status);
+int mpd_status_get_song_id(const struct mpd_status *status);
+int mpd_status_get_next_song_pos(const struct mpd_status *status);
+int mpd_status_get_next_song_id(const struct mpd_status *status);
+unsigned mpd_status_get_elapsed_time(const struct mpd_status *status);
+unsigned mpd_status_get_elapsed_ms(const struct mpd_status *status);
+unsigned mpd_status_get_total_time(const struct mpd_status *status);
+unsigned mpd_status_get_kbit_rate(const struct mpd_status *status);
+const struct mpd_audio_format *mpd_status_get_audio_format(const struct mpd_status *status);
+unsigned mpd_status_get_update_id(const struct mpd_status *status);
+const char *mpd_status_get_error(const struct mpd_status *status);
+
+bool mpd_send_sticker_set(struct mpd_connection *connection, const char *type,
+       const char *uri, const char *name, const char *value);
+bool mpd_run_sticker_set(struct mpd_connection *connection, const char *type,
+      const char *uri, const char *name, const char *value);
+bool mpd_send_sticker_delete(struct mpd_connection *connection, const char *type,
+   const char *uri, const char *name);
+bool mpd_run_sticker_delete(struct mpd_connection *connection, const char *type,
+         const char *uri, const char *name);
+bool mpd_send_sticker_get(struct mpd_connection *connection, const char *type,
+       const char *uri, const char *name);
+bool mpd_send_sticker_list(struct mpd_connection *connection, const char *type,
+        const char *uri);
+bool mpd_send_sticker_find(struct mpd_connection *connection, const char *type,
+        const char *base_uri, const char *name);
+const char *mpd_parse_sticker(const char *input, size_t *name_length_r);
+struct mpd_pair *mpd_recv_sticker(struct mpd_connection *connection);
+void mpd_return_sticker(struct mpd_connection *connection, struct mpd_pair *pair);
