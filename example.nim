@@ -1,5 +1,6 @@
+# based of https://raw.githubusercontent.com/cmende/libmpdclient/master/src/example.c
 import strfmt
-import test
+import libmpdclient
 
 
 proc handle_error(c: ptr  mpd_connection ):void=
